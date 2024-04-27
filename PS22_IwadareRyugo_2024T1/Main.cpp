@@ -1,96 +1,111 @@
 ﻿# include <Siv3D.hpp> // Siv3D v0.6.13
 
+constexpr int ball_Rad = 40;
+
+constexpr float ball_Move_Speed = 200;
+
+constexpr Size brick_Size{40,20};
+
+constexpr int x_Count = 20;
+constexpr int y_Count = 5;
+constexpr int max = x_Count * y_Count;
+
 void Main()
 {
-	// 背景の色を設定する | Set the background color
-	Scene::SetBackground(ColorF{ 0.6, 0.8, 0.7 });
 
-	// 画像ファイルからテクスチャを作成する | Create a texture from an image file
-	const Texture texture{ U"example/windmill.png" };
+#pragma region ボール
+	Vec2 ballVec{0,ball_Move_Speed};
 
-	// 絵文字からテクスチャを作成する | Create a texture from an emoji
-	const Texture emoji{ U"🦖"_emoji };
+	Circle ball{ 400,400,8 };
+#pragma endregion
 
-	// 太文字のフォントを作成する | Create a bold font with MSDF method
-	const Font font{ FontMethod::MSDF, 48, Typeface::Bold };
+#pragma region ブロック
+	Rect bricks[max];
+	bricks[0] = Rect(0,0);
+	for (auto y = 0; y < y_Count; y++)
+	{
+		for (auto x = 0; x < x_Count; x++)
+		{
+			int index_Count = y * x_Count + x;
+			bricks[index_Count] = Rect{
+				x * brick_Size.x,
+				brick_Size.y + y * brick_Size.y,
+				brick_Size
+		};
 
-	// テキストに含まれる絵文字のためのフォントを作成し、font に追加する | Create a font for emojis in text and add it to font as a fallback
-	const Font emojiFont{ 48, Typeface::ColorEmoji };
-	font.addFallback(emojiFont);
-
-	// ボタンを押した回数 | Number of button presses
-	int32 count = 0;
-
-	// チェックボックスの状態 | Checkbox state
-	bool checked = false;
-
-	// プレイヤーの移動スピード | Player's movement speed
-	double speed = 200.0;
-
-	// プレイヤーの X 座標 | Player's X position
-	double playerPosX = 400;
-
-	// プレイヤーが右を向いているか | Whether player is facing right
-	bool isPlayerFacingRight = true;
+		}
+	}
+#pragma endregion
 
 	while (System::Update())
 	{
-		// テクスチャを描く | Draw the texture
-		texture.draw(20, 20);
 
-		// テキストを描く | Draw text
-		font(U"Hello, Siv3D!🎮").draw(64, Vec2{ 20, 340 }, ColorF{ 0.2, 0.4, 0.8 });
+#pragma region 更新
+		const Rect paddle{
+		/* 座標 */ Arg::center(Cursor::Pos().x,500),
+		/* Xサイズ */ 60,
+		/* Yサイズ */ 10
+		};
 
-		// 指定した範囲内にテキストを描く | Draw text within a specified area
-		font(U"Siv3D (シブスリーディー) は、ゲームやアプリを楽しく簡単な C++ コードで開発できるフレームワークです。")
-			.draw(18, Rect{ 20, 430, 480, 200 }, Palette::Black);
+		ball.moveBy(ballVec * Scene::DeltaTime());
+#pragma endregion
 
-		// 長方形を描く | Draw a rectangle
-		Rect{ 540, 20, 80, 80 }.draw();
-
-		// 角丸長方形を描く | Draw a rounded rectangle
-		RoundRect{ 680, 20, 80, 200, 20 }.draw(ColorF{ 0.0, 0.4, 0.6 });
-
-		// 円を描く | Draw a circle
-		Circle{ 580, 180, 40 }.draw(Palette::Seagreen);
-
-		// 矢印を描く | Draw an arrow
-		Line{ 540, 330, 760, 260 }.drawArrow(8, SizeF{ 20, 20 }, ColorF{ 0.4 });
-
-		// 半透明の円を描く | Draw a semi-transparent circle
-		Circle{ Cursor::Pos(), 40 }.draw(ColorF{ 1.0, 0.0, 0.0, 0.5 });
-
-		// ボタン | Button
-		if (SimpleGUI::Button(U"count: {}"_fmt(count), Vec2{ 520, 370 }, 120, (checked == false)))
+#pragma region 衝突
+		/// ブロックの衝突の検知
+		for (auto i = 0; i < max; i++)
 		{
-			// カウントを増やす | Increase the count
-			++count;
+			auto& refbrick = bricks[i];
+
+			if (refbrick.intersects(ball))
+			{
+				// ブロックの上辺、または底辺と交差。
+				if (refbrick.bottom().intersects(ball) || refbrick.top().intersects(ball))
+				{
+					ballVec.y *= -1;
+				}
+				else
+				{
+					ballVec.x *= -1;
+				}	// ブロックの右辺、または左辺と交差。
+
+				//ブロックを画面外に出す。
+				refbrick.y -= 600;
+
+				break;
+			}
+
 		}
 
-		// チェックボックス | Checkbox
-		SimpleGUI::CheckBox(checked, U"Lock \U000F033E", Vec2{ 660, 370 }, 120);
-
-		// スライダー | Slider
-		SimpleGUI::Slider(U"speed: {:.1f}"_fmt(speed), speed, 100, 400, Vec2{ 520, 420 }, 140, 120);
-
-		// 左キーが押されていたら | If left key is pressed
-		if (KeyLeft.pressed())
+		/// 天井との衝突を検知
+		if (ball.y < 0 && ballVec.y < 0)
 		{
-			// プレイヤーが左に移動する | Player moves left
-			playerPosX = Max((playerPosX - speed * Scene::DeltaTime()), 60.0);
-			isPlayerFacingRight = false;
+			ballVec.y = -1;
 		}
 
-		// 右キーが押されていたら | If right key is pressed
-		if (KeyRight.pressed())
+		/// 壁との衝突を検知
+		if((ball.x < 0 && ballVec.x < 0)
+			|| (Scene::Width() < ball.x && 0 < ballVec.x))
 		{
-			// プレイヤーが右に移動する | Player moves right
-			playerPosX = Min((playerPosX + speed * Scene::DeltaTime()), 740.0);
-			isPlayerFacingRight = true;
+			ballVec.x *= -1;
 		}
 
-		// プレイヤーを描く | Draw the player
-		emoji.scaled(0.75).mirrored(isPlayerFacingRight).drawAt(playerPosX, 540);
+		if (0 < ballVec.y && paddle.intersects(ball))
+		{
+			ballVec = Vec2{
+				(ball.x - paddle.center().x) * 10,
+				-ballVec.y
+			}.setLength(ball_Move_Speed);
+		}
+#pragma endregion
+
+#pragma region 描画
+		for (int i = 0; i < max; i++)
+		{
+			bricks[i].stretched(-1).draw(HSV{ bricks[i].y - 40 });
+		}
+		ball.draw();
+		paddle.rounded(3).draw();
+#pragma endregion
 	}
 }
 
