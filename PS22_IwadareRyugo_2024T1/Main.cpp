@@ -5,6 +5,7 @@ class Score;
 
 namespace constants {
 
+	/// @brief ボール用の定数
 	namespace ball {
 		/// @brief ボールの速さ
 		constexpr double SPEED = 480.0;
@@ -16,10 +17,10 @@ namespace constants {
 		constexpr Size SIZE{ 40, 20 };
 
 		/// @brief ブロックの数　縦
-		constexpr int Y_COUNT = 1;
+		constexpr int Y_COUNT = 30;
 
 		/// @brief ブロックの数　横
-		constexpr int X_COUNT = 1;
+		constexpr int X_COUNT = 20;
 
 		/// @brief 合計ブロック数
 		constexpr int MAX = Y_COUNT * X_COUNT;
@@ -43,13 +44,20 @@ namespace constants {
 		};
 	}
 
+	/// @brief パドル用の定数
 	namespace paddle {
 		int Y_POS = 500;
-		int X_SIZE = 60;
+		int X_SIZE = 100;
 		int Y_SIZE = 10;
+	}
+
+	/// @brief ライフ用の定数
+	namespace life {
+		int LifeCount = 5;
 	}
 }
 
+/// @brief ブロック
 class Bricks final {
 public:
 	/// @brief ブロックのクラス
@@ -62,17 +70,17 @@ public:
 		BrickClass() : brickObj(0, 0), _breakType(constants::brick::BreakType::NullBrick) {}
 	};
 
-	/// @brief 全てのブロック
+	// 全てのブロック
 	BrickClass _brickstruct[constants::brick::MAX];
-	/// @brief 動くブロック
+	// 動くブロック
 	BrickClass* moveBrick[constants::brick::Y_COUNT * constants::brick::HindBrickCount];
-	/// @brief 動くブロックの速さ
+	// 動くブロックの速さ
 	float _speed;
-	/// @brief 壊れないブロックのX_countで生成するindexの配列
+	// 壊れないブロックのX_countで生成するindexの配列
 	int notBreakBrick[constants::brick::NotBreakCount];
-	/// @brief お邪魔ブロックのX_countで生成するindexの配列
+	// お邪魔ブロックのX_countで生成するindexの配列
 	int hindBrick[constants::brick::HindBrickCount];
-
+	// クリア判定
 	bool _clear;
 
 	Bricks() : notBreakBrick{ 3,constants::brick::X_COUNT - 3 },
@@ -94,6 +102,7 @@ public:
 
 				//ブロックのタイプの設定
 				bool isState = false;
+				//NotBreak
 				for (int i : notBreakBrick){
 					if (x == i) {
 						brick->_breakType = BreakType::NotBreak;
@@ -102,6 +111,7 @@ public:
 					}
 				}
 				if (!isState){
+					//HindRance
 					for (int i : hindBrick){
 						if (x == i){
 							brick->_breakType = BreakType::HindRance;
@@ -111,6 +121,7 @@ public:
 							break;
 						}
 					}
+					//Break
 					if (!isState)
 					{
 						brick->_breakType = BreakType::Break;
@@ -118,12 +129,12 @@ public:
 				}
 			}
 		}
-		// moveBrickの配列の空きをNullBrickで埋める。
+		// moveBrickの配列の空きをNullBrickの属性を持ったBrickで埋める。
 		if (moveBrickCount != Y_COUNT * HindBrickCount){
 			for (moveBrickCount; moveBrickCount < Y_COUNT * HindBrickCount; moveBrickCount++){
 				BrickClass* brickobj = new BrickClass();
+				brickobj->_breakType = BreakType::NullBrick;
 				moveBrick[moveBrickCount] = brickobj;
-				delete brickobj;
 			}
 		}
 	}
@@ -132,10 +143,13 @@ public:
 	{
 		using namespace constants::brick;
 		for (int i = 0; i < Y_COUNT * HindBrickCount;++i) {
+			// 参照のない配列の要素はnullptrでnullチェックできない(と思う)ので物理的に作ったNullでnullチェックをしている。
 			if (moveBrick[i]->_breakType == BreakType::NullBrick) { break; }
 			if (moveBrick[i]->_breakType == BreakType::MoveBrick)
 			{
+				//MoveBrickならブロックを動かす。
 				moveBrick[i]->brickObj.y += _speed * Scene::DeltaTime();
+				// ブロックの高さが規定値に達したらゲームに干渉しないところへ移動し、属性を変える。
 				if (moveBrick[i]->brickObj.y > Scene::Height() + 10)
 				{
 					moveBrick[i]->brickObj.y += 600;
@@ -145,19 +159,24 @@ public:
 		}
 	}
 
+	// ブロック描画
 	void Draw() {
-		// ブロック描画
+		
 		for (int i = 0; i < constants::brick::MAX; ++i) {
 			BrickClass* brick = &_brickstruct[i];
+			//Break属性ならyの位置に合わせた色
 			if (brick->_breakType == constants::brick::BreakType::Break) {
 				brick->brickObj.stretched(-1).draw(HSV{ brick->brickObj.y - 40 });
 			}
+			//NotBreak属性ならグレー
 			else if (brick->_breakType == constants::brick::BreakType::NotBreak) {
 				brick->brickObj.stretched(-1).draw(Palette::Gray);
 			}
+			//HindRance属性なら赤
 			else if(brick->_breakType == constants::brick::BreakType::HindRance) {
 				brick->brickObj.stretched(-1).draw(Palette::Red);
 			}
+			//それ以外(主にMoveBrick属性)なら白
 			else {
 				brick->brickObj.stretched(-1).draw(Palette::White);
 			}
@@ -165,10 +184,11 @@ public:
 		}
 	}
 
+	//ゲームクリア判定(クラス分けるの面倒だったのでここに書いた)
 	void ChackClear(){
 		using namespace constants::brick;
 		bool isChackClear = true;
-		for (auto brick : _brickstruct){
+		for (auto const brick : _brickstruct){
 			if (brick._breakType != BreakType::NotBreak && brick._breakType != BreakType::MoveBrick) {
 				isChackClear = false;
 				break;
@@ -182,37 +202,42 @@ public:
 	void Intersects(Ball* target, Score* score);
 };
 
+/// @brief ボール
 class Ball final {
 public:
-
+	// 初期位置
 	Vec2 init_Pos;
+	// 初期の動き
 	Vec2 init_velocity;
-	/// @brief ボールの速度
+	// ボールの速度
 	Vec2 velocity;
 
-	/// @brief ボール
+	// ボールオブジェクト
 	Circle ball;
-	Ball() : init_Pos({ 400,400 }), init_velocity({ 0, -constants::ball::SPEED }),velocity(init_velocity), ball({ (init_Pos), 8 }) {}
+	Ball() : init_Pos({ 400,400 }), init_velocity({ 0, -constants::ball::SPEED}),velocity(init_velocity), ball({ (init_Pos), 8 }) {}
 
+	// ボール描画
 	void Draw() const {
-		// ボール描画
 		ball.draw();
 	}
 
+	// ボール移動
 	void Update() {
-		// ボール移動
 		ball.moveBy(velocity * Scene::DeltaTime());
 	}
 };
 
+/// @brief パドル
 class Paddle final {
 public:
+	//パドルのオブジェクト
 	Rect paddle;
 
 	Paddle() : paddle({ Arg::center(Cursor::Pos().x, constants::paddle::Y_POS), constants::paddle::X_SIZE, constants::paddle::Y_SIZE }) {}
 
+	// パドル描画
 	void Draw() {
-		// パドル描画
+		
 		paddle.rounded(3).draw();
 	}
 
@@ -233,12 +258,13 @@ public:
 	}
 };
 
+/// @brief ライフ
 class Life {
 public:
 	const int maxLife;
 	int currentlLife;
 	Vec2 lifeTextPos;
-	Life() : maxLife(3), currentlLife(maxLife), lifeTextPos({ Scene::Width() - 20, 20 }) {}
+	Life() : maxLife(constants::life::LifeCount), currentlLife(maxLife), lifeTextPos({ Scene::Width() - 20, 20 }) {}
 
 	void ChackDeath(Ball* target);
 
@@ -251,6 +277,7 @@ public:
 
 };
 
+/// @brief スコア
 class Score {
 public:
 	float score;
@@ -265,13 +292,16 @@ public:
 	}
 };
 
+/// @brief クリア
 class Clear {
 public:
+	// 描画
 	void Draw(Font font) {
 		font(U"GAME CREAR!").drawAt(Scene::Width() / 2, Scene::Height() / 2);
 	}
 };
 
+// ブロックとボールの当たり判定
 void Bricks::Intersects(Ball* target,Score* score) {
 	using namespace constants::brick;
 	// ブロックとの衝突を検知
@@ -322,8 +352,9 @@ void Bricks::Intersects(Ball* target,Score* score) {
 	}
 }
 
+// ライフ、ゲームオーバー判定
 void Life::ChackDeath(Ball* target) {
-	if (target->ball.y < Scene::Height() + 50 || currentlLife <= 0) { return; }
+	if (target->ball.y < Scene::Height() + 50 || currentlLife <= 0) return;
 
 	currentlLife--;
 	if (currentlLife > 0) {
@@ -353,7 +384,9 @@ void Main()
 		paddle.Update();
 		// ボール移動
 		ball.Update();
-		if (!bricks._clear) { life.ChackDeath(&ball); }
+		if (!bricks._clear) {
+			life.ChackDeath(&ball);
+		}
 		bricks.Update();
 
 		//==============================
@@ -371,7 +404,9 @@ void Main()
 		paddle.Draw();
 		score.Draw(font);
 		life.Draw(font);
-		if (bricks._clear) { clear.Draw(font); }
+		if (bricks._clear) {
+			clear.Draw(font);
+		}
 	}
 }
 
