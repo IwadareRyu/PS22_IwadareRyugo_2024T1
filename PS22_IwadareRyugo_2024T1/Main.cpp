@@ -3,6 +3,7 @@
 class Ball;
 class Score;
 class GameManager;
+class AudioManager;
 
 namespace constants {
 
@@ -65,9 +66,57 @@ namespace constants {
 			GameClear,
 		};
 	}
+
+	namespace audioManager {
+		enum class AudioState {
+			Reflect,
+			Explosion,
+			GameOver,
+			GameClear,
+			LifeDown,
+		};
+	}
 }
 
-/// @brief ブロック
+#pragma region オーディオマネージャー
+class AudioManager {
+public:
+	Audio _gameClear;
+	Audio _gameOver;
+	Audio _explosion;
+	Audio _reflect;
+	Audio _lifeDown;
+	AudioManager() : _gameClear({ U"example/GameClear.mp3" }),
+		_gameOver({ U"example/GameOver.mp3" }),
+		_explosion({ U"example/Explosion.mp3" }),
+		_reflect({ U"example/Refrect.mp3" }),
+		_lifeDown({ U"example/LifeDown.mp3" }) {}
+
+	void PlayAudio(constants::audioManager::AudioState state) {
+		using namespace constants::audioManager;
+		switch (state)
+		{
+		case AudioState::GameClear:
+			_gameClear.play();
+			break;
+		case AudioState::GameOver:
+			_gameOver.play();
+			break;
+		case AudioState::Reflect:
+			_reflect.play();
+			break;
+		case AudioState::Explosion:
+			_explosion.play();
+			break;
+		case AudioState::LifeDown :
+			_lifeDown.play();
+			break;
+		}
+	}
+};
+#pragma endregion
+
+#pragma region ブロック
 class Bricks final {
 public:
 	/// @brief ブロックのクラス
@@ -83,7 +132,9 @@ public:
 	// 全てのブロック
 	BrickClass _brickstruct[constants::brick::MAX];
 	// 動くブロック
-	BrickClass* moveBrick[constants::brick::Y_COUNT * constants::brick::HindBrickCount];
+	BrickClass* _moveBrick[constants::brick::Y_COUNT * constants::brick::HindBrickCount];
+
+	int tmpMoveBrickCount = 0;
 	// 動くブロックの速さ
 	float _speed;
 	// 壊れないブロックのX_countで生成するindexの配列
@@ -92,6 +143,7 @@ public:
 	int hindBrick[constants::brick::HindBrickCount];
 	// クリア判定
 	bool _clear;
+
 
 	Bricks() : notBreakBrick{ 3,constants::brick::X_COUNT - 3 },
 		hindBrick{ constants::brick::X_COUNT / 2 ,5 ,constants::brick::X_COUNT - 5},
@@ -125,7 +177,7 @@ public:
 					for (int i : hindBrick){
 						if (x == i){
 							brick->_breakType = BreakType::HindRance;
-							moveBrick[moveBrickCount] = &_brickstruct[index];
+							_moveBrick[moveBrickCount] = &_brickstruct[index];
 							moveBrickCount++;
 							isState = true;
 							break;
@@ -139,32 +191,37 @@ public:
 				}
 			}
 		}
+		tmpMoveBrickCount = moveBrickCount;
 
 		// moveBrickの配列の空きをNullBrickの属性を持ったBrickで埋める。
 		if (moveBrickCount != Y_COUNT * HindBrickCount){
 			for (moveBrickCount; moveBrickCount < Y_COUNT * HindBrickCount; moveBrickCount++){
 				BrickClass* brickobj = new BrickClass();
 				brickobj->_breakType = BreakType::NullBrick;
-				moveBrick[moveBrickCount] = brickobj;
+				_moveBrick[moveBrickCount] = brickobj;
 			}
 		}
 	}
-
+	~Bricks() {
+		for (auto i = tmpMoveBrickCount; i < constants::brick::Y_COUNT * constants::brick::HindBrickCount;i++) {
+			delete _moveBrick[i];
+		}
+	}
 	void Update()
 	{
 		using namespace constants::brick;
 		for (int i = 0; i < Y_COUNT * HindBrickCount;++i) {
 			// 参照のない配列の要素はnullptrでnullチェックできない(と思う)ので物理的に作ったNullでnullチェックをしている。
-			if (moveBrick[i]->_breakType == BreakType::NullBrick) { break; }
-			if (moveBrick[i]->_breakType == BreakType::MoveBrick)
+			if (_moveBrick[i]->_breakType == BreakType::NullBrick) { break; }
+			if (_moveBrick[i]->_breakType == BreakType::MoveBrick)
 			{
 				//MoveBrickならブロックを動かす。
-				moveBrick[i]->brickObj.y += _speed * Scene::DeltaTime();
+				_moveBrick[i]->brickObj.y += _speed * Scene::DeltaTime();
 				// ブロックの高さが規定値に達したらゲームに干渉しないところへ移動し、属性を変える。
-				if (moveBrick[i]->brickObj.y > Scene::Height() + 10)
+				if (_moveBrick[i]->brickObj.y > Scene::Height() + 10)
 				{
-					moveBrick[i]->brickObj.y += 600;
-					moveBrick[i]->_breakType = BreakType::NotBreak;
+					_moveBrick[i]->brickObj.y += 600;
+					_moveBrick[i]->_breakType = BreakType::NotBreak;
 				}
 			}
 		}
@@ -210,10 +267,11 @@ public:
 		}
 	}
 
-	void Intersects(Ball* target, Score* score);
+	void Intersects(Ball* target, Score* score , AudioManager* audio);
 };
+#pragma endregion
 
-/// @brief ボール
+#pragma region ボール
 class Ball final {
 public:
 	// 初期位置
@@ -237,8 +295,9 @@ public:
 		ball.moveBy(velocity * Scene::DeltaTime());
 	}
 };
+#pragma endregion
 
-/// @brief パドル
+#pragma region パドル
 class Paddle final {
 public:
 	//パドルのオブジェクト
@@ -248,7 +307,6 @@ public:
 
 	// パドル描画
 	void Draw() {
-		
 		paddle.rounded(3).draw();
 	}
 
@@ -257,10 +315,11 @@ public:
 		paddle = { Arg::center(Cursor::Pos().x, Y_POS), X_SIZE,Y_SIZE };
 	}
 
-	void Intersects(Ball* target) {
+	void Intersects(Ball* target,AudioManager* audio) {
 		// パドルとの衝突を検知
 		if ((0 < target->velocity.y) && paddle.intersects(target->ball))
 		{
+			audio->PlayAudio(constants::audioManager::AudioState::Reflect);
 			target->velocity = Vec2{
 				(target->ball.x - paddle.center().x) * 10,
 				-target->velocity.y
@@ -268,8 +327,9 @@ public:
 		}
 	}
 };
+#pragma endregion
 
-/// @brief ライフ
+#pragma region ライフ
 class Life {
 public:
 	const int maxLife;
@@ -287,8 +347,9 @@ public:
 	}
 
 };
+#pragma endregion
 
-/// @brief スコア
+#pragma region スコア
 class Score {
 public:
 	float score;
@@ -302,8 +363,9 @@ public:
 		font(score).draw(20, 20);
 	}
 };
+#pragma endregion
 
-/// @brief クリア
+#pragma region ゲームクリア
 class Clear {
 public:
 	// 描画
@@ -311,7 +373,9 @@ public:
 		font(U"GAME CREAR!").drawAt(Scene::Width() / 2, Scene::Height() / 2);
 	}
 };
+#pragma endregion
 
+#pragma region ゲームマネージャー
 class GameManager {
 public:
 	Ball ball;
@@ -320,6 +384,7 @@ public:
 	Score score;
 	Life life;
 	Clear clear;
+	AudioManager audio;
 
 	Font font{ 50 };
 	constants::gameManager::Manager _gameManagerState;
@@ -349,8 +414,8 @@ public:
 		//==============================
 		// コリジョン
 		//==============================
-		bricks.Intersects(&ball, &score);
-		paddle.Intersects(&ball);
+		bricks.Intersects(&ball, &score , &audio);
+		paddle.Intersects(&ball, &audio);
 
 
 		//==============================
@@ -363,6 +428,7 @@ public:
 		life.Draw(font);
 		if (bricks._clear) {
 			_gameManagerState = gameManager::Manager::GameClear;
+			audio.PlayAudio(audioManager::AudioState::GameClear);
 		}
 	}
 
@@ -379,9 +445,10 @@ public:
 		clear.Draw(font);
 	}
 };
+#pragma endregion
 
 // ブロックとボールの当たり判定
-void Bricks::Intersects(Ball* target,Score* score) {
+void Bricks::Intersects(Ball* target,Score* score, AudioManager* audio) {
 	using namespace constants::brick;
 	// ブロックとの衝突を検知
 	for (int i = 0; i < MAX; ++i) {
@@ -403,6 +470,7 @@ void Bricks::Intersects(Ball* target,Score* score) {
 			// あたったブロックは画面外に出す
 			if (_brickstruct[i]._breakType == BreakType::Break || _brickstruct[i]._breakType == BreakType::HindRance) {
 				score->AddScore();
+				audio->PlayAudio(constants::audioManager::AudioState::Explosion);
 				if (_brickstruct[i]._breakType == BreakType::Break) {
 					refBrick.y -= 600;
 					_brickstruct[i]._breakType = BreakType::NotBreak;
@@ -410,6 +478,10 @@ void Bricks::Intersects(Ball* target,Score* score) {
 				else {
 					_brickstruct[i]._breakType = BreakType::MoveBrick;
 				}
+			}
+			else
+			{
+				audio->PlayAudio(constants::audioManager::AudioState::Reflect);
 			}
 			ChackClear();
 			// 同一フレームでは複数のブロック衝突を検知しない
@@ -438,10 +510,12 @@ void Life::ChackDeath(Ball* target, GameManager* manager) {
 
 	currentlLife--;
 	if (currentlLife > 0) {
+		manager->audio.PlayAudio(audioManager::AudioState::LifeDown);
 		target->ball.setPos(target->init_Pos);
 		target->velocity = target->init_velocity;
 	}
 	else {
+		manager->audio.PlayAudio(audioManager::AudioState::GameOver);
 		manager->_gameManagerState = gameManager::Manager::GameOver;
 	}
 }
@@ -477,36 +551,6 @@ void Main()
 			_manager.GameClear();
 			break;
 		}
-		////==============================
-		//// 更新
-		////==============================
-		//// パドル
-		//paddle.Update();
-		//// ボール移動
-		//ball.Update();
-		//if (!bricks._clear) {
-		//	life.ChackDeath(&ball);
-		//}
-		//bricks.Update();
-
-		////==============================
-		//// コリジョン
-		////==============================
-		//bricks.Intersects(&ball, &score);
-		//paddle.Intersects(&ball);
-
-
-		////==============================
-		//// 描画
-		////==============================
-		//ball.Draw();
-		//bricks.Draw();
-		//paddle.Draw();
-		//score.Draw(font);
-		//life.Draw(font);
-		//if (bricks._clear) {
-		//	clear.Draw(font);
-		//}
 	}
 }
 
