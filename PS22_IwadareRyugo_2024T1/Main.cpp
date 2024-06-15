@@ -2,6 +2,7 @@
 
 class Ball;
 class Score;
+class GameManager;
 
 namespace constants {
 
@@ -54,6 +55,15 @@ namespace constants {
 	/// @brief ライフ用の定数
 	namespace life {
 		int LifeCount = 5;
+	}
+
+	namespace gameManager {
+		enum class Manager {
+			GameStart,
+			inGame,
+			GameOver,
+			GameClear,
+		};
 	}
 }
 
@@ -129,6 +139,7 @@ public:
 				}
 			}
 		}
+
 		// moveBrickの配列の空きをNullBrickの属性を持ったBrickで埋める。
 		if (moveBrickCount != Y_COUNT * HindBrickCount){
 			for (moveBrickCount; moveBrickCount < Y_COUNT * HindBrickCount; moveBrickCount++){
@@ -266,7 +277,7 @@ public:
 	Vec2 lifeTextPos;
 	Life() : maxLife(constants::life::LifeCount), currentlLife(maxLife), lifeTextPos({ Scene::Width() - 20, 20 }) {}
 
-	void ChackDeath(Ball* target);
+	void ChackDeath(Ball* target, GameManager* manager);
 
 	void Draw(Font font) {
 		font(U"ライフ:", currentlLife).draw(Arg::topRight = lifeTextPos);
@@ -298,6 +309,74 @@ public:
 	// 描画
 	void Draw(Font font) {
 		font(U"GAME CREAR!").drawAt(Scene::Width() / 2, Scene::Height() / 2);
+	}
+};
+
+class GameManager {
+public:
+	Ball ball;
+	Bricks bricks;
+	Paddle paddle;
+	Score score;
+	Life life;
+	Clear clear;
+
+	Font font{ 50 };
+	constants::gameManager::Manager _gameManagerState;
+
+	GameManager() : _gameManagerState(constants::gameManager::Manager::GameStart) {}
+
+	void StartGame(){
+		using namespace constants::gameManager;
+		font(U"Start With Left Click").drawAt(Scene::Width() / 2, Scene::Height() / 2);
+		if (MouseL.up()) {
+			_gameManagerState = Manager::inGame;
+		}
+	}
+
+	void Update(){
+		using namespace constants;
+		//==============================
+		// 更新
+		//==============================
+		// パドル
+		paddle.Update();
+		// ボール移動
+		ball.Update();
+		life.ChackDeath(&ball,this);
+		bricks.Update();
+
+		//==============================
+		// コリジョン
+		//==============================
+		bricks.Intersects(&ball, &score);
+		paddle.Intersects(&ball);
+
+
+		//==============================
+		// 描画
+		//==============================
+		ball.Draw();
+		bricks.Draw();
+		paddle.Draw();
+		score.Draw(font);
+		life.Draw(font);
+		if (bricks._clear) {
+			_gameManagerState = gameManager::Manager::GameClear;
+		}
+	}
+
+	void GameOver()
+	{
+		score.Draw(font);
+		life.Draw(font);
+	}
+
+	void GameClear()
+	{
+		score.Draw(font);
+		life.Draw(font);
+		clear.Draw(font);
 	}
 };
 
@@ -353,60 +432,81 @@ void Bricks::Intersects(Ball* target,Score* score) {
 }
 
 // ライフ、ゲームオーバー判定
-void Life::ChackDeath(Ball* target) {
-	if (target->ball.y < Scene::Height() + 50 || currentlLife <= 0) return;
+void Life::ChackDeath(Ball* target, GameManager* manager) {
+	using namespace constants;
+	if (target->ball.y < Scene::Height() + 50) return;
 
 	currentlLife--;
 	if (currentlLife > 0) {
 		target->ball.setPos(target->init_Pos);
 		target->velocity = target->init_velocity;
 	}
+	else {
+		manager->_gameManagerState = gameManager::Manager::GameOver;
+	}
 }
 
 void Main()
 {
-	Ball ball;
-	Bricks bricks;
-	Paddle paddle;
-	Score score;
-	Life life;
-	Clear clear;
+	//Ball ball;
+	//Bricks bricks;
+	//Paddle paddle;
+	//Score score;
+	//Life life;
+	//Clear clear;
+	GameManager _manager;
 
 	const Font font{50};
 
 
 	while (System::Update())
 	{
-		//==============================
-		// 更新
-		//==============================
-		// パドル
-		paddle.Update();
-		// ボール移動
-		ball.Update();
-		if (!bricks._clear) {
-			life.ChackDeath(&ball);
+		using namespace constants::gameManager;
+		switch(_manager._gameManagerState)
+		{
+		case Manager::GameStart :
+			_manager.StartGame();
+			break;
+		case Manager::inGame :
+			_manager.Update();
+			break;
+		case Manager::GameOver:
+			_manager.GameOver();
+			break;
+		case Manager::GameClear:
+			_manager.GameClear();
+			break;
 		}
-		bricks.Update();
+		////==============================
+		//// 更新
+		////==============================
+		//// パドル
+		//paddle.Update();
+		//// ボール移動
+		//ball.Update();
+		//if (!bricks._clear) {
+		//	life.ChackDeath(&ball);
+		//}
+		//bricks.Update();
 
-		//==============================
-		// コリジョン
-		//==============================
-		bricks.Intersects(&ball, &score);
-		paddle.Intersects(&ball);
+		////==============================
+		//// コリジョン
+		////==============================
+		//bricks.Intersects(&ball, &score);
+		//paddle.Intersects(&ball);
 
 
-		//==============================
-		// 描画
-		//==============================
-		ball.Draw();
-		bricks.Draw();
-		paddle.Draw();
-		score.Draw(font);
-		life.Draw(font);
-		if (bricks._clear) {
-			clear.Draw(font);
-		}
+		////==============================
+		//// 描画
+		////==============================
+		//ball.Draw();
+		//bricks.Draw();
+		//paddle.Draw();
+		//score.Draw(font);
+		//life.Draw(font);
+		//if (bricks._clear) {
+		//	clear.Draw(font);
+		//}
 	}
 }
 
